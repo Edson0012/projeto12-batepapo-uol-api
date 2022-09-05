@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import joi from "joi";
 import dayjs from "dayjs"
 dotenv.config();
@@ -28,11 +28,38 @@ const messageSchema = joi.object({
 })
 
 
+ setInterval( async () => {
+        const checkStatus = Date.now()
+        const listUser =  await db.collection('participants').find().toArray()
+
+        listUser.forEach(async (value) => {
+            const leaveRoom = {
+                from: value.name ,
+                to: "Todos",
+                text: "sai da sala",
+                type: "status",
+                time: dayjs().format('HH:mm:ss'),
+            }
+
+            if(checkStatus - value.lastStatus > 10000){
+                await db.collection('participants').deleteOne({name: value.name})
+                await db.collection('mensagem').insertOne(leaveRoom)
+            }
+
+        })
+
+}, 15000); 
+
+
 app.get('/participants', async (req, res) => {
+    try {
+        const listParticipants = await db.collection('participants').find().toArray()
 
-    const listParticipants = await db.collection('participants').find({}).toArray()
+        res.send(listParticipants)
 
-    res.send(listParticipants)
+    }catch(err){
+        res.status(500).send('error no servidor')
+    }
 });
 
 
@@ -65,7 +92,7 @@ app.post('/participants', async (req, res) => {
             time: dayjs().format('HH:mm:ss'),
         })
 
-        return res.status(201)
+        return res.status(201).send('created')
 
     }catch(err){
         return res.status(500).send({message: "erro no servidor"})
@@ -104,38 +131,62 @@ app.post('/messages', async (req, res) => {
 })
 
 app.get('/messages', async (req, res) => {
-    const msg = [];
-    const {limit} = req.query
-    const {user} = req.headers
-
+    
     try {
-        const messages = await db.collection('mensagem').find().toArray()
+        const msg = [];
+        const {limit} = req.query
+        const {user} = req.headers
+        const messages = await db.collection('mensagem').find({}).toArray()
         const privateMessages = messages.filter((message) => {
-            if(message.form === user || message.to === user){           
+            if(message.from === user || message.to === user || message.to === 'Todos'){           
                 return message
             }
-        })
+        }) 
 
         if(limit){
             for(let i = 0; i < limit ; i++){
-                if(privateMessages[i].from === user || privateMessages[i].to === user){
-                    privateMessages.reverse()
+                if(privateMessages[i].from === user || privateMessages[i].to === user || privateMessages[i].to === 'Todos'){
                     msg.push(privateMessages[i])
                 }
             }
-            return res.send(msg)
-        } else {
-            privateMessages.reverse()
-            return res.send(privateMessages)
-        }
 
+            return res.send(msg.reverse())
+
+        } else {
+            return res.send(privateMessages.reverse())
+        }
+ 
             
+
     }catch (err) {
         return res.status(500).send('error no servidor')
     }
     
 })
 
+app.post('/status', async (req, res) => {
+    const {user} = req.headers
+    try {
+        const checkUser = await db.collection('participants').findOne({
+            name: user
+        })
+        if(checkUser){
+            await db.collection('participants').updateOne({
+                name: user
+            }, { $set: {lastStatus: Date.now()}})
+          return  res.status(200)
+
+        } else {
+
+            return res.status(404)
+        }
+
+    }catch(err){
+        
+        return res.status(500).send('error no servidor')
+    }
+})
+ 
 
 app.listen(5000, () => console.log("server listen 5000")
 );
