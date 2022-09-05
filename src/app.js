@@ -94,33 +94,46 @@ app.post('/messages', async (req, res) => {
                 type: messageInfo.type,
                 time: dayjs().format('HH:mm:ss')
             })
+            return res.sendStatus(201)
         } else {
             return res.status(422).send('usuario não encontrado.')
         }
-
-
-        
-        res.send(201)
     }catch(err){
         return res.status(500).send('error no servidor')
     }
 })
 
 app.get('/messages', async (req, res) => {
-    try {
-        const {user} = req.headers
-        const checkUser = await db.collection('participants').findOne({
-            name: user
-        })
-        if(checkUser){
-            db.collection('mensagem').find({
-                name: user
-            }).toArray()
-        }
-    } catch (err) {
+    const msg = [];
+    const {limit} = req.query
+    const {user} = req.headers
 
+    try {
+        const messages = await db.collection('mensagem').find().toArray()
+        const privateMessages = messages.filter((message) => {
+            if(message.form === user || message.to === user){           
+                return message
+            }
+        })
+
+        if(limit){
+            for(let i = 0; i < limit ; i++){
+                if(privateMessages[i].from === user || privateMessages[i].to === user){
+                    privateMessages.reverse()
+                    msg.push(privateMessages[i])
+                }
+            }
+            return res.send(msg)
+        } else {
+            privateMessages.reverse()
+            return res.send(privateMessages)
+        }
+
+            
+    }catch (err) {
+        return res.status(500).send('error no servidor')
     }
-    res.send(returnMessage)
+    
 })
 
 
